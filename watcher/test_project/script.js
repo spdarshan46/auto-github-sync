@@ -1,1 +1,0 @@
-console.log("Auto Git Sync is working!");
