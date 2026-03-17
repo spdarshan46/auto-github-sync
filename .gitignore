@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Logs
+logs/
+*.log
+
+# Config (don't commit your token!)
+config.json
+*.config.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+node_modules/
+.env
+.venv
+
+env/
+__pycache__/
+*.pyc
+logs/
