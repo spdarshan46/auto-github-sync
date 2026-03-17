@@ -1,27 +1,37 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *.so
 .Python
 
+# =========================
+# Virtual Environments
+# =========================
+env/
+.venv/
+.env
+
+# =========================
 # Logs
+# =========================
 logs/
 *.log
 
-# Config (don't commit your token!)
-config.json
-*.config.json
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
 
-# OS
+# =========================
+# OS Files
+# =========================
 .DS_Store
 Thumbs.db
 
-# Project specific
-node_modules/
-.env
-.venv
-
-env/
-__pycache__/
-*.pyc
-logs/
+# =========================
+# Config (keep secrets safe)
+# =========================
+config.json
+*.config.json
