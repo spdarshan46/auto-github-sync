@@ -1,10 +1,195 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Auto Sync Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Card · S P Darshan</title>
+    <!-- Google Font for clean typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Boxicons for icons -->
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(145deg, #f0f4fa, #d9e2ef);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Inter', sans-serif;
+            padding: 1rem;
+        }
+
+        .id-card {
+            max-width: 380px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 32px;
+            padding: 2rem 1.8rem;
+            box-shadow: 0 25px 45px -15px rgba(0, 20, 40, 0.25);
+            transition: transform 0.2s ease;
+            border: 1px solid rgba(255,255,255,0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .id-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 50px -15px #2563eb40;
+        }
+
+        .profile-img {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 1.2rem;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            padding: 4px;
+            box-shadow: 0 10px 25px -8px #2563eb;
+        }
+
+        .profile-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 3px solid white;
+            display: block;
+        }
+
+        .name {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-align: center;
+            color: #1e293b;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.25rem;
+        }
+
+        .title {
+            font-size: 1rem;
+            font-weight: 500;
+            text-align: center;
+            color: #3b82f6;
+            background: #eef4ff;
+            display: inline-block;
+            padding: 0.3rem 1.2rem;
+            border-radius: 40px;
+            margin: 0.5rem auto 1.2rem;
+            letter-spacing: 0.3px;
+            border: 1px solid #dbeafe;
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.7rem 0;
+            border-bottom: 1px solid #f0f2f5;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-row i {
+            font-size: 1.3rem;
+            color: #3b82f6;
+            width: 28px;
+            text-align: center;
+        }
+
+        .info-row span {
+            font-size: 0.95rem;
+            color: #334155;
+            font-weight: 500;
+        }
+
+        .badge-container {
+            display: flex;
+            justify-content: center;
+            gap: 0.8rem;
+            margin: 1.5rem 0 0.5rem;
+        }
+
+        .badge {
+            background: #f1f5f9;
+            padding: 0.4rem 1rem;
+            border-radius: 40px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #2563eb;
+            border: 1px solid #e2e8f0;
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 1rem;
+            letter-spacing: 0.3px;
+        }
+
+        /* simple responsive */
+        @media (max-width: 400px) {
+            .id-card {
+                padding: 1.5rem;
+            }
+            .name {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello ,I'm Darshan!</h1>
-    <script src="script.js"></script>
+    <div class="id-card">
+        <!-- profile image (placeholder – replace with your own photo) -->
+        <div class="profile-img">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233b82f6' /%3E%3Ctext x='30' y='70' fill='white' font-size='24' font-weight='bold'%3ESP%3C/text%3E%3C/svg%3E"
+                 alt="profile">
+        </div>
+
+        <!-- name & role -->
+        <div class="name">S P Darshan</div>
+        <div style="text-align: center;">
+            <span class="title">Backend · AI Engineer</span>
+        </div>
+
+        <!-- contact details -->
+        <div style="margin: 1.5rem 0 0.5rem;">
+            <div class="info-row">
+                <i class='bx bx-envelope'></i>
+                <span>spdarshan252@gmail.com</span>
+            </div>
+            <div class="info-row">
+                <i class='bx bx-phone'></i>
+                <span>+91 7676324020</span>
+            </div>
+            <div class="info-row">
+                <i class='bx bx-map'></i>
+                <span>Chamarajanagar, India</span>
+            </div>
+            <div class="info-row">
+                <i class='bx bxl-github'></i>
+                <span>github.com/spdarshan46</span>
+            </div>
+        </div>
+
+        <!-- tech badges (simple) -->
+        <div class="badge-container">
+            <span class="badge">Python</span>
+            <span class="badge">Django</span>
+            <span class="badge">React</span>
+            <span class="badge">AI</span>
+        </div>
+
+        <div class="footer-note">
+            ⚡ building scalable systems
+        </div>
+    </div>
 </body>
 </html>
