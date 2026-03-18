@@ -2,7 +2,7 @@
 """
 Automatic GitHub Sync with Safe Workflow
 Monitors file changes, auto-commits to dev branch, and creates pull requests
-Includes auto-pull before push to avoid rejections, and UTF‑8 safe logging.
+Includes auto-pull before push, UTF‑8 safe logging, and detailed error logging.
 """
 
 import os
@@ -20,15 +20,12 @@ import requests
 
 # ==================== FIX WINDOWS CONSOLE ENCODING ====================
 if sys.platform == "win32":
-    # Set console code page to UTF-8 (Windows 10+)
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
         kernel32.SetConsoleOutputCP(65001)
     except Exception:
         pass
-
-    # Also try to set sys.stdout encoding (fallback)
     if sys.stdout.encoding != 'utf-8':
         try:
             sys.stdout.reconfigure(encoding='utf-8')
@@ -59,10 +56,8 @@ DEFAULT_CONFIG = {
 
 # ==================== CUSTOM LOGGING HANDLER ====================
 class UTF8StreamHandler(logging.StreamHandler):
-    """Stream handler that writes UTF-8 bytes directly to the binary stream."""
     def __init__(self, stream=None):
         super().__init__(stream)
-        # Use the underlying binary buffer if available (stdout/stderr)
         if stream in (sys.stdout, sys.stderr) and hasattr(stream, 'buffer'):
             self.stream = stream.buffer
         else:
@@ -78,7 +73,6 @@ class UTF8StreamHandler(logging.StreamHandler):
 
 # ==================== LOGGING SETUP ====================
 def setup_logging(log_file):
-    """Setup logging with UTF-8 safe console handler."""
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -86,12 +80,10 @@ def setup_logging(log_file):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    # File handler (always UTF-8)
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(file_handler)
 
-    # Console handler (UTF-8 safe)
     console_handler = UTF8StreamHandler(sys.stdout)
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(console_handler)
@@ -100,7 +92,6 @@ def setup_logging(log_file):
 
 # ==================== CONFIG MANAGER ====================
 class ConfigManager:
-    """Manage configuration loading and saving (with merge to fill missing keys)."""
     def __init__(self, config_file):
         self.config_file = config_file
         self.config = self.load_config()
@@ -123,9 +114,12 @@ class ConfigManager:
 
     def _merge_configs(self, default, loaded):
         merged = default.copy()
-        for key, value in loaded.items():
-            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-                merged[key] = self._merge_configs(merged[key], value)
+        for key, value in default.items():
+            if key in loaded:
+                if isinstance(value, dict) and isinstance(loaded[key], dict):
+                    merged[key] = self._merge_configs(value, loaded[key])
+                else:
+                    merged[key] = loaded[key]
             else:
                 merged[key] = value
         return merged
@@ -148,7 +142,7 @@ class ConfigManager:
 class GitAutomation:
     def __init__(self, repo_path, config, logger):
         self.repo_path = repo_path
-        self.config = config
+        self.config = config  # ConfigManager instance
         self.logger = logger
         self.dev_branch = config.get('github.dev_branch')
         self.base_branch = config.get('github.base_branch')
@@ -172,18 +166,35 @@ class GitAutomation:
         return success
 
     def switch_to_dev_branch(self):
+        """Switch to dev branch; return True if successful, log errors."""
+        # Check if already on dev branch
+        success, current = self.run_git_command("git rev-parse --abbrev-ref HEAD")
+        if success and current == self.dev_branch:
+            self.logger.debug(f"Already on {self.dev_branch}")
+            return True
+
+        # List branches
         success, branches = self.run_git_command("git branch")
+        if not success:
+            self.logger.error(f"Failed to list branches: {branches}")
+            return False
+
         if self.dev_branch in branches:
-            success, _ = self.run_git_command(f"git checkout {self.dev_branch}")
+            success, output = self.run_git_command(f"git checkout {self.dev_branch}")
             if success:
                 self.logger.info(f"Switched to existing branch: {self.dev_branch}")
                 return True
+            else:
+                self.logger.error(f"Failed to checkout {self.dev_branch}: {output}")
+                return False
         else:
-            success, _ = self.run_git_command(f"git checkout -b {self.dev_branch}")
+            success, output = self.run_git_command(f"git checkout -b {self.dev_branch}")
             if success:
                 self.logger.info(f"Created and switched to branch: {self.dev_branch}")
                 return True
-        return False
+            else:
+                self.logger.error(f"Failed to create branch {self.dev_branch}: {output}")
+                return False
 
     def commit_changes(self, message):
         success, _ = self.run_git_command("git add .")
@@ -206,20 +217,20 @@ class GitAutomation:
 
     def push_to_branch(self):
         """Push to remote dev branch; if rejected, pull first then retry."""
-        # First attempt to push
         success, output = self.run_git_command(f"git push -u origin {self.dev_branch}")
         if success:
             self.logger.info(f"Pushed to origin/{self.dev_branch}")
             return True
 
-        # If push failed, check if it's because remote has changes
         if "rejected" in output.lower() and "fetch first" in output.lower():
             self.logger.warning("Push rejected because remote has changes. Pulling first...")
-            # Pull from remote dev branch (merge)
             pull_success, pull_output = self.run_git_command(f"git pull origin {self.dev_branch}")
             if pull_success:
                 self.logger.info("Pull successful. Retrying push...")
-                # Try push again
+                # After pull, ensure we're still on dev branch (pull may have caused merge)
+                if not self.switch_to_dev_branch():
+                    self.logger.error("Failed to ensure we're on dev branch after pull")
+                    return False
                 retry_success, retry_output = self.run_git_command(f"git push origin {self.dev_branch}")
                 if retry_success:
                     self.logger.info(f"Pushed to origin/{self.dev_branch} after pull")
@@ -345,7 +356,7 @@ class ChangeHandler(FileSystemEventHandler):
     def commit_and_push(self):
         self.logger.info("🔄 Processing pending changes...")
         if not self.git_automation.switch_to_dev_branch():
-            self.logger.error("Failed to switch to dev branch")
+            self.logger.error("❌ Failed to switch to dev branch")
             return
 
         commit_msg = f"Auto sync: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -365,8 +376,8 @@ class ChangeHandler(FileSystemEventHandler):
 class AutoGitSync:
     def __init__(self):
         self.config_manager = ConfigManager(CONFIG_FILE)
-        self.config = self.config_manager.config
-        self.logger = setup_logging(self.config.get('logging.log_file', 'logs/activity.log'))
+        self.config = self.config_manager.config  # raw dict (for backward compatibility)
+        self.logger = setup_logging(self.config_manager.get('logging.log_file', 'logs/activity.log'))
         self.repo_path = os.getcwd()
         self.git_automation = GitAutomation(self.repo_path, self.config_manager, self.logger)
         self.github_api = GitHubAPI(self.config_manager, self.logger)
@@ -377,7 +388,7 @@ class AutoGitSync:
 
         self.watch_folder = os.path.join(
             self.repo_path,
-            self.config.get('monitoring.folder_to_watch', 'test_project')
+            self.config_manager.get('monitoring.folder_to_watch', 'test_project')
         )
         if not os.path.exists(self.watch_folder):
             os.makedirs(self.watch_folder)
@@ -387,14 +398,15 @@ class AutoGitSync:
         self.logger.info("="*50)
         self.logger.info("🚀 Auto Git Sync Started")
         self.logger.info(f"📁 Watching folder: {self.watch_folder}")
-        self.logger.info(f"🌿 Development branch: {self.config.get('github.dev_branch')}")
-        self.logger.info(f"🎯 Base branch: {self.config.get('github.base_branch')}")
-        self.logger.info(f"⏱️ Commit delay: {self.config.get('monitoring.commit_delay')} seconds")
+        # Use config_manager.get for dotted paths
+        self.logger.info(f"🌿 Development branch: {self.config_manager.get('github.dev_branch')}")
+        self.logger.info(f"🎯 Base branch: {self.config_manager.get('github.base_branch')}")
+        self.logger.info(f"⏱️ Commit delay: {self.config_manager.get('monitoring.commit_delay')} seconds")
         self.logger.info("="*50)
 
         event_handler = ChangeHandler(
             self.git_automation, self.github_api, self.logger,
-            commit_delay=self.config.get('monitoring.commit_delay', 5)
+            commit_delay=self.config_manager.get('monitoring.commit_delay', 5)
         )
         observer = Observer()
         observer.schedule(event_handler, self.watch_folder, recursive=True)
