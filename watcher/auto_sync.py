@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Automatic GitHub Sync with Safe Workflow
 Monitors file changes, auto-commits to dev branch, and creates pull requests
@@ -18,20 +19,17 @@ import requests
 
 # ==================== FIX WINDOWS CONSOLE ENCODING ====================
 if sys.platform == "win32":
-    # Attempt to set console to UTF-8 (works in Windows 10+)
-    try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        kernel32.SetConsoleOutputCP(65001)
-    except Exception:
-        pass
-
-    # Also try to set sys.stdout encoding
+    # Try to set stdout to UTF-8
     if sys.stdout.encoding != 'utf-8':
         try:
+            # Python 3.7+
             sys.stdout.reconfigure(encoding='utf-8')
         except AttributeError:
+            # Older Python fallback
             sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    # If still not UTF-8, show a hint
+    if sys.stdout.encoding != 'utf-8':
+        print("⚠️ For proper emoji display, run: chcp 65001")
 
 # ==================== CONFIGURATION ====================
 
@@ -47,7 +45,7 @@ DEFAULT_CONFIG = {
     },
     "monitoring": {
         "folder_to_watch": "test_project",
-        "commit_delay": 5,
+        "commit_delay": 5,  # seconds to wait before committing
         "ignore_patterns": [".git", "__pycache__", "*.pyc", ".DS_Store"]
     },
     "logging": {
@@ -56,49 +54,24 @@ DEFAULT_CONFIG = {
     }
 }
 
-# ==================== CUSTOM LOGGING HANDLER ====================
-class UTF8StreamHandler(logging.StreamHandler):
-    """Stream handler that writes UTF-8 bytes directly to the binary stream."""
-    def __init__(self, stream=None):
-        super().__init__(stream)
-        # If the stream is stdout/stderr and we have a binary buffer, use it
-        if stream in (sys.stdout, sys.stderr) and hasattr(stream, 'buffer'):
-            self.stream = stream.buffer
-        else:
-            self.stream = stream
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            # Encode to UTF-8 and write to binary stream
-            self.stream.write(msg.encode('utf-8') + b'\n')
-            self.flush()
-        except Exception:
-            self.handleError(record)
-
 # ==================== LOGGING SETUP ====================
 
 def setup_logging(log_file):
-    """Setup logging configuration with UTF-8 safe handlers"""
+    """Setup logging configuration"""
     # Create logs directory if it doesn't exist
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # File handler (always supports UTF-8)
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(file_handler)
-
-    # Custom stream handler for console (UTF-8 safe)
-    stream_handler = UTF8StreamHandler(sys.stdout)
-    stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(stream_handler)
-
-    return logger
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
 
 # ==================== CONFIG MANAGER ====================
 
@@ -108,23 +81,22 @@ class ConfigManager:
     def __init__(self, config_file):
         self.config_file = config_file
         self.config = self.load_config()
-        # Debug: print loaded config to verify
-        print("DEBUG: Loaded config:", json.dumps(self.config, indent=2))
     
     def load_config(self):
-        """Load configuration from file and merge with defaults"""
+        """Load configuration from file and merge with defaults to fill missing keys"""
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
                     loaded_config = json.load(f)
                 print(f"✅ Configuration loaded from {self.config_file}")
-                # Merge with defaults to fill missing keys
+                # Merge loaded config with defaults to ensure all keys exist
                 config = self._merge_configs(DEFAULT_CONFIG, loaded_config)
                 return config
             except Exception as e:
                 print(f"⚠️ Error loading config: {e}")
                 return DEFAULT_CONFIG.copy()
         else:
+            # Save default config
             self.save_config(DEFAULT_CONFIG)
             print(f"⚠️ Please update {self.config_file} with your GitHub credentials")
             return DEFAULT_CONFIG.copy()
@@ -140,6 +112,7 @@ class ConfigManager:
         return merged
     
     def save_config(self, config):
+        """Save configuration to file"""
         with open(self.config_file, 'w') as f:
             json.dump(config, f, indent=4)
     
@@ -153,7 +126,7 @@ class ConfigManager:
             else:
                 return default
         return value
-    
+
 # ==================== GIT AUTOMATION ====================
 
 class GitAutomation:
@@ -460,9 +433,9 @@ class AutoGitSync:
         self.logger.info("="*50)
         self.logger.info("🚀 Auto Git Sync Started")
         self.logger.info(f"📁 Watching folder: {self.watch_folder}")
-        self.logger.info(f"🌿 Development branch: {self.config['github']['dev_branch']}")
-        self.logger.info(f"🎯 Base branch: {self.config['github']['base_branch']}")
-        self.logger.info(f"⏱️ Commit delay: {self.config['monitoring']['commit_delay']} seconds")
+        self.logger.info(f"🌿 Development branch: {self.config.get('github.dev_branch')}")
+        self.logger.info(f"🎯 Base branch: {self.config.get('github.base_branch')}")
+        self.logger.info(f"⏱️ Commit delay: {self.config.get('monitoring.commit_delay')} seconds")
         self.logger.info("="*50)
         
         # Setup event handler
