@@ -2,7 +2,7 @@
 """
 Automatic GitHub Sync with Safe Workflow
 Monitors file changes, auto-commits to dev branch, and creates pull requests
-Includes auto-pull before push, UTF‑8 safe logging, and detailed error logging.
+Includes auto-pull before push, conflict detection, and robust error logging.
 """
 
 import os
@@ -148,6 +148,7 @@ class GitAutomation:
         self.base_branch = config.get('github.base_branch')
 
     def run_git_command(self, command):
+        """Execute git command, return (success, stdout+stderr)."""
         try:
             result = subprocess.run(
                 command,
@@ -159,24 +160,32 @@ class GitAutomation:
             )
             return True, result.stdout.strip()
         except subprocess.CalledProcessError as e:
+            # Log the full error for debugging
+            self.logger.error(f"Git command failed: {command}\nError: {e.stderr.strip()}")
             return False, e.stderr.strip()
 
     def is_git_repo(self):
         success, _ = self.run_git_command("git rev-parse --git-dir")
         return success
 
+    def has_unmerged_files(self):
+        """Check if there are merge conflicts."""
+        success, output = self.run_git_command("git ls-files -u")
+        return bool(output.strip())
+
+    def get_current_branch(self):
+        success, branch = self.run_git_command("git rev-parse --abbrev-ref HEAD")
+        return branch if success else None
+
     def switch_to_dev_branch(self):
         """Switch to dev branch; return True if successful, log errors."""
-        # Check if already on dev branch
-        success, current = self.run_git_command("git rev-parse --abbrev-ref HEAD")
-        if success and current == self.dev_branch:
+        current = self.get_current_branch()
+        if current == self.dev_branch:
             self.logger.debug(f"Already on {self.dev_branch}")
             return True
 
-        # List branches
         success, branches = self.run_git_command("git branch")
         if not success:
-            self.logger.error(f"Failed to list branches: {branches}")
             return False
 
         if self.dev_branch in branches:
@@ -217,29 +226,45 @@ class GitAutomation:
 
     def push_to_branch(self):
         """Push to remote dev branch; if rejected, pull first then retry."""
+        # First attempt to push
         success, output = self.run_git_command(f"git push -u origin {self.dev_branch}")
         if success:
             self.logger.info(f"Pushed to origin/{self.dev_branch}")
             return True
 
+        # Check if push failed because remote has changes
         if "rejected" in output.lower() and "fetch first" in output.lower():
             self.logger.warning("Push rejected because remote has changes. Pulling first...")
+
+            # Before pulling, ensure we're on dev branch
+            if not self.switch_to_dev_branch():
+                self.logger.error("Cannot pull: not on dev branch")
+                return False
+
+            # Pull from remote dev branch
             pull_success, pull_output = self.run_git_command(f"git pull origin {self.dev_branch}")
-            if pull_success:
-                self.logger.info("Pull successful. Retrying push...")
-                # After pull, ensure we're still on dev branch (pull may have caused merge)
-                if not self.switch_to_dev_branch():
-                    self.logger.error("Failed to ensure we're on dev branch after pull")
-                    return False
-                retry_success, retry_output = self.run_git_command(f"git push origin {self.dev_branch}")
-                if retry_success:
-                    self.logger.info(f"Pushed to origin/{self.dev_branch} after pull")
-                    return True
-                else:
-                    self.logger.error(f"Push failed after pull: {retry_output}")
-                    return False
-            else:
+            if not pull_success:
                 self.logger.error(f"Pull failed: {pull_output}")
+                return False
+
+            # Check for merge conflicts after pull
+            if self.has_unmerged_files():
+                self.logger.error("Merge conflicts detected after pull. Please resolve manually.")
+                return False
+
+            self.logger.info("Pull successful. Retrying push...")
+            # Ensure we're still on dev branch (pull may have switched branch)
+            if not self.switch_to_dev_branch():
+                self.logger.error("Failed to ensure we're on dev branch after pull")
+                return False
+
+            # Retry push
+            retry_success, retry_output = self.run_git_command(f"git push origin {self.dev_branch}")
+            if retry_success:
+                self.logger.info(f"Pushed to origin/{self.dev_branch} after pull")
+                return True
+            else:
+                self.logger.error(f"Push failed after pull: {retry_output}")
                 return False
         else:
             self.logger.error(f"Push failed: {output}")
@@ -319,6 +344,7 @@ class ChangeHandler(FileSystemEventHandler):
         self.pending_changes = False
         self.watched_folder = git_automation.config.get('monitoring.folder_to_watch')
         self.ignore_patterns = git_automation.config.get('monitoring.ignore_patterns', [])
+        self.failed_push_cooldown = 0  # timestamp of last push failure
 
     def should_ignore(self, path):
         return any(pattern in path for pattern in self.ignore_patterns)
@@ -332,6 +358,12 @@ class ChangeHandler(FileSystemEventHandler):
         self.logger.info(f"📝 File changed: {os.path.basename(event.src_path)}")
         self.pending_changes = True
         current_time = time.time()
+
+        # If a push failed recently, wait longer before retrying
+        if current_time - self.failed_push_cooldown < 30:
+            self.logger.debug("Skipping commit due to recent push failure")
+            return
+
         if current_time - self.last_commit_time > self.commit_delay:
             time.sleep(self.commit_delay)
             if self.pending_changes:
@@ -357,6 +389,8 @@ class ChangeHandler(FileSystemEventHandler):
         self.logger.info("🔄 Processing pending changes...")
         if not self.git_automation.switch_to_dev_branch():
             self.logger.error("❌ Failed to switch to dev branch")
+            self.pending_changes = False
+            self.last_commit_time = time.time()
             return
 
         commit_msg = f"Auto sync: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -364,8 +398,10 @@ class ChangeHandler(FileSystemEventHandler):
             if self.git_automation.push_to_branch():
                 self.github_api.create_pull_request()
                 self.logger.info("✅ Sync completed successfully")
+                self.failed_push_cooldown = 0  # reset on success
             else:
                 self.logger.error("❌ Push failed")
+                self.failed_push_cooldown = time.time()  # record failure time
         else:
             self.logger.error("❌ Commit failed")
 
@@ -398,7 +434,6 @@ class AutoGitSync:
         self.logger.info("="*50)
         self.logger.info("🚀 Auto Git Sync Started")
         self.logger.info(f"📁 Watching folder: {self.watch_folder}")
-        # Use config_manager.get for dotted paths
         self.logger.info(f"🌿 Development branch: {self.config_manager.get('github.dev_branch')}")
         self.logger.info(f"🎯 Base branch: {self.config_manager.get('github.base_branch')}")
         self.logger.info(f"⏱️ Commit delay: {self.config_manager.get('monitoring.commit_delay')} seconds")
