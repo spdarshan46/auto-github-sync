@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Automatic GitHub Sync with Safe Workflow
 Monitors file changes, auto-commits to dev branch, and creates pull requests
