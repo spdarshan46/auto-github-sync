@@ -1,94 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto Git Sync Demo</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-align: center;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        h1 {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-        }
-        .card {
-            background: rgba(255,255,255,0.1);
-            padding: 30px;
-            border-radius: 10px;
-            margin: 20px 0;
-        }
-        .timestamp {
-            font-size: 1.2em;
-            background: rgba(0,0,0,0.3);
-            padding: 10px;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
-        button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-size: 1em;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        button:hover {
-            background: #45a049;
-        }
-        .status {
-            margin-top: 30px;
-            font-size: 0.9em;
-            opacity: 0.8;
-        }
-    </style>
+<title>Page Title</title>
 </head>
 <body>
-    <h1>🚀 Auto Git Sync</h1>
-    <div class="card">
-        <p>This file is being watched by the auto-sync system.</p>
-        <p>Any changes you make will be automatically:</p>
-        <ul style="list-style: none; padding: 0;">
-            <li>✅ Committed to <strong>darshan-dev</strong> branch</li>
-            <li>✅ Pushed to GitHub</li>
-            <li>✅ Create a Pull Request to <strong>main</strong></li>
-        </ul>
-        <div class="timestamp" id="timestamp"></div>
-        <button onclick="updateContent()">Click to change content</button>
-        <p class="status" id="status">System Active</p>
-    </div>
 
-    <script>
-        function updateTimestamp() {
-            document.getElementById('timestamp').innerText = 'Last updated: ' + new Date().toLocaleString();
-        }
+<h1>I'm S P Darshan/h1>
+<p>This is a paragraph.</p>
 
-        function updateContent() {
-            const status = document.getElementById('status');
-            status.innerText = '✨ Change detected at ' + new Date().toLocaleTimeString();
-            status.style.background = '#FF9800';
-            setTimeout(() => {
-                status.innerText = 'System Active';
-                status.style.background = 'transparent';
-            }, 2000);
-            updateTimestamp();
-        }
-
-        // Initial timestamp
-        updateTimestamp();
-
-        // Log to console to show activity
-        console.log('Auto Git Sync demo loaded at', new Date().toLocaleString());
-    </script>
 </body>
 </html>

@@ -142,13 +142,13 @@ class ConfigManager:
 class GitAutomation:
     def __init__(self, repo_path, config, logger):
         self.repo_path = repo_path
-        self.config = config  # ConfigManager instance
+        self.config = config
         self.logger = logger
         self.dev_branch = config.get('github.dev_branch')
         self.base_branch = config.get('github.base_branch')
 
     def run_git_command(self, command):
-        """Execute git command, return (success, stdout+stderr)."""
+        """Execute git command, return (success, stderr). Logs full output on error."""
         try:
             result = subprocess.run(
                 command,
@@ -160,8 +160,11 @@ class GitAutomation:
             )
             return True, result.stdout.strip()
         except subprocess.CalledProcessError as e:
-            # Log the full error for debugging
-            self.logger.error(f"Git command failed: {command}\nError: {e.stderr.strip()}")
+            self.logger.error(f"Git command failed: {command}")
+            if e.stdout:
+                self.logger.error(f"stdout: {e.stdout.strip()}")
+            if e.stderr:
+                self.logger.error(f"stderr: {e.stderr.strip()}")
             return False, e.stderr.strip()
 
     def is_git_repo(self):
@@ -169,7 +172,6 @@ class GitAutomation:
         return success
 
     def has_unmerged_files(self):
-        """Check if there are merge conflicts."""
         success, output = self.run_git_command("git ls-files -u")
         return bool(output.strip())
 
@@ -178,7 +180,6 @@ class GitAutomation:
         return branch if success else None
 
     def switch_to_dev_branch(self):
-        """Switch to dev branch; return True if successful, log errors."""
         current = self.get_current_branch()
         if current == self.dev_branch:
             self.logger.debug(f"Already on {self.dev_branch}")
@@ -225,40 +226,30 @@ class GitAutomation:
             return False
 
     def push_to_branch(self):
-        """Push to remote dev branch; if rejected, pull first then retry."""
-        # First attempt to push
         success, output = self.run_git_command(f"git push -u origin {self.dev_branch}")
         if success:
             self.logger.info(f"Pushed to origin/{self.dev_branch}")
             return True
 
-        # Check if push failed because remote has changes
         if "rejected" in output.lower() and "fetch first" in output.lower():
             self.logger.warning("Push rejected because remote has changes. Pulling first...")
-
-            # Before pulling, ensure we're on dev branch
             if not self.switch_to_dev_branch():
                 self.logger.error("Cannot pull: not on dev branch")
                 return False
 
-            # Pull from remote dev branch
-            pull_success, pull_output = self.run_git_command(f"git pull origin {self.dev_branch}")
+            # Use --no-edit to avoid editor issues during merge
+            pull_success, pull_output = self.run_git_command(f"git pull --no-edit origin {self.dev_branch}")
             if not pull_success:
-                self.logger.error(f"Pull failed: {pull_output}")
-                return False
-
-            # Check for merge conflicts after pull
-            if self.has_unmerged_files():
-                self.logger.error("Merge conflicts detected after pull. Please resolve manually.")
+                self.logger.error(f"Pull failed. Output: {pull_output}")
+                if self.has_unmerged_files():
+                    self.logger.error("Merge conflicts detected. Please resolve manually.")
                 return False
 
             self.logger.info("Pull successful. Retrying push...")
-            # Ensure we're still on dev branch (pull may have switched branch)
             if not self.switch_to_dev_branch():
                 self.logger.error("Failed to ensure we're on dev branch after pull")
                 return False
 
-            # Retry push
             retry_success, retry_output = self.run_git_command(f"git push origin {self.dev_branch}")
             if retry_success:
                 self.logger.info(f"Pushed to origin/{self.dev_branch} after pull")
@@ -344,7 +335,7 @@ class ChangeHandler(FileSystemEventHandler):
         self.pending_changes = False
         self.watched_folder = git_automation.config.get('monitoring.folder_to_watch')
         self.ignore_patterns = git_automation.config.get('monitoring.ignore_patterns', [])
-        self.failed_push_cooldown = 0  # timestamp of last push failure
+        self.failed_push_cooldown = 0
 
     def should_ignore(self, path):
         return any(pattern in path for pattern in self.ignore_patterns)
@@ -359,7 +350,6 @@ class ChangeHandler(FileSystemEventHandler):
         self.pending_changes = True
         current_time = time.time()
 
-        # If a push failed recently, wait longer before retrying
         if current_time - self.failed_push_cooldown < 30:
             self.logger.debug("Skipping commit due to recent push failure")
             return
@@ -398,10 +388,10 @@ class ChangeHandler(FileSystemEventHandler):
             if self.git_automation.push_to_branch():
                 self.github_api.create_pull_request()
                 self.logger.info("✅ Sync completed successfully")
-                self.failed_push_cooldown = 0  # reset on success
+                self.failed_push_cooldown = 0
             else:
                 self.logger.error("❌ Push failed")
-                self.failed_push_cooldown = time.time()  # record failure time
+                self.failed_push_cooldown = time.time()
         else:
             self.logger.error("❌ Commit failed")
 
@@ -412,7 +402,7 @@ class ChangeHandler(FileSystemEventHandler):
 class AutoGitSync:
     def __init__(self):
         self.config_manager = ConfigManager(CONFIG_FILE)
-        self.config = self.config_manager.config  # raw dict (for backward compatibility)
+        self.config = self.config_manager.config
         self.logger = setup_logging(self.config_manager.get('logging.log_file', 'logs/activity.log'))
         self.repo_path = os.getcwd()
         self.git_automation = GitAutomation(self.repo_path, self.config_manager, self.logger)
